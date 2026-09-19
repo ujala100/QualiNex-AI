@@ -1,0 +1,20 @@
+# Use Python 3.11 or 3.12. Some pins here (pydantic-core, etc.) don't yet
+# ship prebuilt wheels for Python 3.14, which forces a from-source Rust
+# build and fails without a C++ toolchain installed.
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+pydantic==2.9.2
+python-dotenv==1.0.1
+python-multipart==0.0.9
+requests==2.32.3
+pypdf==5.0.1
+python-docx==1.1.2
+# OCR support for scanned/image-only PDFs; install Tesseract OCR on the host too.
+PyMuPDF==1.24.10
+Pillow==10.4.0
+pytesseract==0.3.13
+psycopg2-binary==2.9.13
+PyMySQL==1.1.1
+langgraph==0.2.34
+langchain-core==0.3.9
