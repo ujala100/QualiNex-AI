@@ -1,183 +1,709 @@
-# AIVOA — AI-Powered Customer Complaint Management System
+# QualiNex-AI — AI-Powered Customer Complaint Management System
 
-Pharmaceutical (API/FDF) manufacturing QMS — Customer Complaint intake module.
-Built for the AIVOA Round 1 AI Product Engineer (Interns) assignment.
+An AI-powered customer complaint intake and quality-assurance system designed for pharmaceutical **API (Active Pharmaceutical Ingredient)** and **FDF (Finished Dosage Form)** manufacturing environments.
 
-## Why this is one system, not three bolted-on features
+QualiNex-AI automates complaint intake, document extraction, complaint editing, completeness checking, duplicate detection, risk classification, root-cause recommendation, CAPA suggestions, and complaint summarization through a unified AI workflow.
 
-The three mandatory AI tools — **Log Complaint**, **AI Edit Complaint**, and
-**Document Extraction** — all run through **one shared LangGraph pipeline**
-(`backend/app/agents/graph.py`). They differ only in how they *enter* the
-graph:
+---
 
-```
-Log Complaint tool  (free text)        ──┐
-Document Extraction (PDF/DOCX/TXT/EML) ──┼──> extract_fields ──┐
-AI Edit Complaint tool (edit instruction)─────> apply_edit ────┤
-                                                                ▼
-                                              completeness_check
-                                          (missing required fields?)
-                                          ───────┬────────────────
-                                         yes ↓            ↓ no
-                                  ask clarifying    duplicate_check
-                                  question, STOP           ↓
-                                                       root_cause
-                                                            ↓
-                                                          capa
-                                                            ↓
-                                                explanation risk_classification
-                                                            ↓
-                                                         summary
-                                                            ↓
-                                                    compose_message (→ chat)
-```
+## Overview
 
-This is the actual point of using an agent **framework** instead of three
-separate scripts: one inspectable, extensible pipeline; a real conditional
-branch (skip the expensive reasoning nodes if the record isn't complete
-enough yet); and adding a new "bonus" AI feature is one new node + one new
-edge, not a rewrite.
+Customer complaints in pharmaceutical manufacturing can arrive through emails, documents, PDFs, or unstructured text. Converting these inputs into structured complaint records requires manual data extraction and assessment.
 
-The **Log Customer Complaint form on the left is 100% AI-populated** — every
-input in `LogComplaintForm.jsx` is hard-`disabled`, with no `onChange`
-handler at all. The *only* way its Redux state changes is
-`applyAIResult(...)`, dispatched after a response comes back from one of the
-three tools. There is no code path for a human to type directly into that
-form — this was a hard requirement, not a UI style choice.
+**QualiNex-AI** provides an AI-assisted workflow that converts unstructured complaint information into a structured complaint record and generates preliminary quality-assurance insights.
 
-## The 3 mandatory AI tools, mapped to code
+The system supports:
 
-| Tool | Frontend trigger | Backend endpoint | Graph entry node |
-|---|---|---|---|
-| **1. Log Complaint** | Paste text / type in chat before a complaint exists | `POST /api/copilot/log-complaint` | `extract_fields` |
-| **2. Document Extraction** | Drag & drop / browse a PDF, DOCX, TXT, or EML | `POST /api/copilot/extract-document` | `extract_fields` (after `document_parser.py` pulls raw text) |
-| **3. AI Edit Complaint** | Chat message after a complaint already exists | `POST /api/copilot/edit-complaint` | `apply_edit` (LLM patches only what the instruction mentions; the prompt explicitly forbids touching anything else) |
+* Free-text complaint intake
+* PDF, DOCX, TXT and EML document extraction
+* AI-powered complaint field extraction
+* AI-assisted complaint editing
+* Complaint completeness analysis
+* Duplicate complaint detection
+* AI risk classification
+* Root-cause recommendations
+* CAPA recommendations
+* Complaint summarization
+* Clarification questions for incomplete complaints
+* AI-generated QA insights
 
-All three return the same `CopilotResult` shape, which the frontend applies
-in one Redux action — that's what lets the AI Risk Assessment panel,
-completeness score, duplicate flag, root cause, and CAPA suggestions update
-consistently no matter which of the three tools produced the update.
+---
 
-## Bonus AI features (all implemented as graph nodes)
+## Key Features
 
-- **Complaint Completeness Checker** — `completeness_check_node`, also drives
-  the conditional "ask a clarifying question instead of guessing" branch.
-- **Duplicate Complaint Detection** — `duplicate_check_node`, compares
-  against the last 25 complaints on file (product + batch/lot + description).
-- **Root Cause Recommendation** — `root_cause_node`, GMP-style categories
-  (raw material deviation, process deviation, cross-contamination, etc.)
-- **CAPA Recommendation** — `capa_node`, preliminary corrective/preventive
-  actions for the QA reviewer to refine.
-- **AI Risk Classification** — `risk_classification_node`, produces
-  risk level, 0–100 score, rationale, and regulatory flags (e.g. "possible
-  adverse event — notify Pharmacovigilance").
-- **Complaint Summary** — `summary_node`, a QA-dashboard-ready one-liner.
+### 1. AI Complaint Intake
 
-## Tech stack (per the mandatory list)
+Users can paste complaint text, emails, or messages into the AI Copilot.
 
-- **Frontend:** React + Redux (Redux Toolkit) — no other state library.
-- **Backend:** Python + FastAPI.
-- **AI Agent Framework:** LangGraph (`backend/app/agents/graph.py`).
-- **LLMs:** Groq — `gemma2-9b-it` for fast field extraction,
-  `llama-3.3-70b-versatile` for reasoning (risk/root-cause/CAPA/duplicate/edit).
-- **Database:** SQLAlchemy, defaults to SQLite for zero-setup local
-  grading; one env var (`DATABASE_URL`) switches to Postgres or MySQL.
-- **Font:** Google Inter (loaded in `frontend/public/index.html`).
+The system extracts relevant information such as:
 
-## Running it locally
+* Complaint source
+* Customer name
+* Product name
+* Product strength/grade
+* Batch/lot number
+* Manufacturing date
+* Expiry date
+* Quantity affected
+* Complaint type
+* Complaint date
+* Detailed complaint description
+* Initial severity
+* Priority
 
-### Backend
-```bash
-cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env        # then put your real GROQ_API_KEY in .env
-uvicorn app.main:app --reload --port 8000
-```
+The extracted information is then used to populate the complaint record.
+
+---
+
+### 2. Document Extraction
+
+Users can upload:
+
+* PDF
+* DOCX
+* TXT
+* EML
+
+The document-processing layer extracts the available text and sends it into the same AI complaint-processing workflow.
+
+The system also provides handling for:
+
+* Text-based PDFs
+* Empty-password PDFs
+* Password-protected PDFs
+* Corrupt documents
+* Scanned/image-based PDFs through OCR support
+
+Production-grade document intelligence is outside the scope of this project, but the architecture is designed so more advanced document-processing components can be added later.
+
+---
+
+### 3. AI Edit Complaint
+
+Once a complaint exists, users can provide natural-language instructions such as:
+
+> Change the priority to High and update the batch number to AMX-7734.
+
+The AI interprets the instruction and modifies only the fields relevant to the request.
+
+The edit workflow is designed to preserve existing complaint information that was not mentioned by the user.
+
+---
+
+## Unified LangGraph Architecture
+
+One of the main design decisions in QualiNex-AI is that the AI functionality is implemented as a **shared LangGraph workflow** rather than independent scripts.
+
+The three main entry points are:
+
+**Log Complaint**
+
+Free-text complaint → field extraction → validation → AI analysis
+
+**Document Extraction**
+
+Document → text extraction → field extraction → validation → AI analysis
+
+**AI Edit Complaint**
+
+Edit instruction → targeted field modification → validation → AI analysis
+
+All three workflows ultimately use the same downstream reasoning pipeline.
+
+### High-Level Workflow
+
+User Input
+↓
+Complaint Extraction / AI Edit
+↓
+Completeness Check
+↓
+Is sufficient information available?
+├── No → Generate clarification question
+└── Yes
+↓
+Duplicate Detection
+↓
+Root Cause Recommendation
+↓
+CAPA Recommendation
+↓
+Risk Classification
+↓
+Complaint Summary
+↓
+Compose AI Response
+↓
+Update Complaint UI + Risk Assessment
+
+This architecture makes the system easier to extend because additional AI capabilities can be implemented as new LangGraph nodes instead of creating separate AI pipelines.
+
+---
+
+## AI Features
+
+### Complaint Completeness Checker
+
+Evaluates whether the complaint contains sufficient information for further processing.
+
+If important information is missing, the system can request clarification instead of blindly generating missing information.
+
+Example:
+
+> "We received a complaint about some tablets looking discolored."
+
+The system can identify missing information such as product name, batch number, customer details, and complaint date.
+
+---
+
+### Duplicate Complaint Detection
+
+Checks the complaint against recent complaint records using information such as:
+
+* Product
+* Batch/lot
+* Complaint description
+
+The system identifies potential duplicate complaints and provides a duplicate indicator for further review.
+
+This is intended as an AI-assisted screening mechanism rather than a definitive regulatory determination.
+
+---
+
+### AI Risk Classification
+
+The system generates an initial risk assessment containing:
+
+* Risk level
+* Risk score
+* Rationale
+* Regulatory/quality-related flags
+
+For example, a complaint describing a possible adverse event can be flagged for additional review.
+
+The generated classification is intended to support QA review and does not replace qualified regulatory or pharmacovigilance decisions.
+
+---
+
+### Root Cause Recommendation
+
+The system generates preliminary possible root-cause categories based on the complaint information.
+
+Examples include:
+
+* Raw material deviation
+* Manufacturing/process deviation
+* Packaging issue
+* Cross-contamination
+* Storage/transport issue
+* Equipment-related issue
+* Labeling issue
+* Other potential quality-system causes
+
+These are recommendations for investigation rather than confirmed root causes.
+
+---
+
+### CAPA Recommendation
+
+The system generates preliminary corrective and preventive action suggestions based on the complaint.
+
+Potential recommendations may include:
+
+* Batch investigation
+* Manufacturing record review
+* Equipment inspection
+* Raw material review
+* Additional testing
+* Packaging investigation
+* Supplier investigation
+* Process review
+* Preventive-control improvements
+
+Final CAPA decisions remain with the appropriate quality team.
+
+---
+
+### Complaint Summary
+
+The system generates a concise complaint summary that can be used for review and downstream QA workflows.
+
+---
+
+## Technology Stack
 
 ### Frontend
-```bash
-cd frontend
-npm install
-npm start                   # runs on http://localhost:3000, proxies API calls to :8000
-```
 
-Then open http://localhost:3000, drop in a sample complaint PDF/email or
-paste text, and watch the form + AI Risk Assessment populate.
+* React
+* Redux Toolkit
+* JavaScript
+* HTML/CSS
+* Google Inter font
 
-### PDF extraction and scanned documents
+### Backend
 
-The API handles normal text PDFs, empty-password PDFs, password-protected-PDF
-feedback, corrupt-file feedback, and scanned/image-only PDFs through OCR. For
-OCR support, install the backend requirements and the native [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
-executable on the machine running FastAPI. Text PDFs do not require Tesseract.
+* Python
+* FastAPI
+* Pydantic
+* SQLAlchemy
 
-### Running without a Groq key
-If `GROQ_API_KEY` is unset, every node falls back to a small deterministic
-heuristic (regex/keyword based) instead of crashing — see `offline_mode`
-in the API response and `_offline_*` functions in `backend/app/agents/nodes.py`.
-This means the whole app is demoable end-to-end even with no API key, and
-it's a deliberate resilience decision worth calling out in the interview,
-not a hidden shortcut.
+### AI / LLM
 
-## Suggested demo video structure (per the "Deliverables" requirement)
+* LangGraph
+* Groq API
+* Gemma 2 9B IT
+* Llama 3.3 70B Versatile
 
-1. **Tool 1 — Log Complaint:** paste a realistic complaint email → show the
-   left form and AI Risk Assessment panel populate live.
-2. **Tool 2 — Document Extraction:** drag a sample complaint PDF → same
-   pipeline, different entry point.
-3. **Tool 3 — AI Edit Complaint:** type "change the priority to High and
-   update the batch number to X" → show only those fields change, everything
-   else is preserved.
-4. **Code walkthrough:** frontend `AICopilotPanel.jsx` → API call →
-   `main.py` endpoint → `graph.py` routing → each node in `nodes.py` →
-   response → `complaintSlice.applyAIResult` → form + risk panel re-render.
-5. **Bonus features:** trigger a duplicate (log the same batch/product
-   twice) and an incomplete complaint (missing product name) to show the
-   clarifying-question branch.
+### Database
 
-## Sample test complaints (for your demo video / interview)
+* SQLite for simple local development
+* PostgreSQL supported through configuration
+* MySQL supported through configuration
 
-Paste these into the "Paste Complaint Text / Email" box to exercise
-different paths:
+### Document Processing
 
-**Complete, high-severity (full pipeline runs):**
-> Customer service received a call on 2026-03-02 from a hospital pharmacist
-> reporting a severe allergic reaction after administering Amoxicillin
-> 500mg Tablets, batch AMX-7734, manufactured 2025-05-10, expiry
-> 2027-05-10. Approximately 40 tablets from the batch are affected.
+* PDF parsing
+* DOCX parsing
+* TXT processing
+* EML processing
+* OCR support for scanned documents using Tesseract
 
-**Incomplete (triggers the clarifying-question branch):**
-> We got an email about some tablets looking discolored.
+---
 
-**Duplicate test:** log the complaint above twice — the second run should
-flag `is_possible_duplicate: true`.
-
-## Project structure
+## Project Architecture
 
 ```
 backend/
-  app/
-    agents/
-      state.py      # LangGraph state schema
-      prompts.py     # all system prompts (domain knowledge lives here)
-      nodes.py       # 9 graph nodes + offline fallbacks
-      graph.py        # graph wiring / conditional routing
-    main.py           # FastAPI routes (the 3 tools + CRUD)
-    models.py          # Pydantic schemas + SQLAlchemy ORM model
-    groq_client.py     # Groq API wrapper (JSON-mode + robust parsing)
-    document_parser.py # PDF/DOCX/TXT/EML -> plain text
-    config.py            # env-driven configuration
+├── app/
+│   ├── agents/
+│   │   ├── state.py
+│   │   ├── prompts.py
+│   │   ├── nodes.py
+│   │   └── graph.py
+│   │
+│   ├── main.py
+│   ├── models.py
+│   ├── groq_client.py
+│   ├── document_parser.py
+│   └── config.py
+│
+├── requirements.txt
+└── .env.example
+
 frontend/
-  src/
-    components/
-      LogComplaintForm.jsx    # AI-only, fully disabled inputs
-      AICopilotPanel.jsx        # upload / paste / chat -- routes to the 3 tools
-      RiskAssessmentPanel.jsx    # renders all AI reasoning outputs
-    store/
-      complaintSlice.js          # form + AI results; applyAIResult is the only writer
-      copilotSlice.js              # chat/progress UI state
-    api/api.js                     # fetch wrappers for the 3 endpoints + CRUD
+├── src/
+│   ├── components/
+│   │   ├── LogComplaintForm.jsx
+│   │   ├── AICopilotPanel.jsx
+│   │   └── RiskAssessmentPanel.jsx
+│   │
+│   ├── store/
+│   │   ├── complaintSlice.js
+│   │   └── copilotSlice.js
+│   │
+│   └── api/
+│       └── api.js
+│
+├── package.json
+└── public/
 ```
-#   Q u a l i N e x - A I  
- 
+
+---
+
+## Backend AI Architecture
+
+The main AI workflow is implemented in:
+
+`backend/app/agents/graph.py`
+
+The LangGraph state is defined in:
+
+`backend/app/agents/state.py`
+
+AI processing nodes are implemented in:
+
+`backend/app/agents/nodes.py`
+
+Prompt definitions and domain-oriented instructions are maintained in:
+
+`backend/app/agents/prompts.py`
+
+The architecture separates:
+
+* State
+* Prompts
+* AI processing nodes
+* Graph orchestration
+* API routes
+* Database models
+* Document parsing
+* LLM communication
+
+This separation makes the system easier to test, debug, and extend.
+
+---
+
+## API Endpoints
+
+### Log Complaint
+
+`POST /api/copilot/log-complaint`
+
+Accepts complaint text and processes it through the AI workflow.
+
+### Document Extraction
+
+`POST /api/copilot/extract-document`
+
+Accepts supported complaint documents and extracts/processes their contents.
+
+### AI Edit Complaint
+
+`POST /api/copilot/edit-complaint`
+
+Accepts a natural-language editing instruction and updates the relevant complaint fields.
+
+The frontend uses the returned structured result to update the complaint state and AI assessment.
+
+---
+
+## Frontend State Management
+
+Redux Toolkit is used as the application's state-management layer.
+
+The main complaint state is handled through:
+
+`complaintSlice.js`
+
+AI-generated complaint results are applied through a centralized update mechanism so that extracted fields and AI assessment results remain synchronized.
+
+The Copilot interaction and progress state are handled separately through:
+
+`copilotSlice.js`
+
+This keeps UI interaction state separate from complaint/business data.
+
+---
+
+## AI Response Flow
+
+A typical complaint-processing request follows this flow:
+
+**Frontend**
+
+User enters complaint text or uploads a document.
+
+↓
+
+**React + Redux**
+
+The frontend sends the request to FastAPI.
+
+↓
+
+**FastAPI**
+
+The appropriate endpoint validates and processes the request.
+
+↓
+
+**Document Parser / AI Extraction**
+
+If required, the document is converted into usable text.
+
+↓
+
+**LangGraph**
+
+The complaint enters the appropriate graph node.
+
+↓
+
+**LLM**
+
+Groq-hosted models process extraction, reasoning, classification, and recommendations.
+
+↓
+
+**Graph Nodes**
+
+The system performs:
+
+* Completeness checking
+* Duplicate detection
+* Root-cause recommendation
+* CAPA recommendation
+* Risk classification
+* Summary generation
+
+↓
+
+**FastAPI Response**
+
+A structured result is returned to the frontend.
+
+↓
+
+**Redux**
+
+Complaint fields and AI assessment state are updated.
+
+↓
+
+**UI**
+
+The complaint form and AI Risk Assessment panel reflect the generated result.
+
+---
+
+## Offline / Fallback Mode
+
+The application includes a fallback mechanism when a Groq API key is unavailable.
+
+Instead of crashing, selected processing functions can use deterministic heuristic logic based on:
+
+* Regular expressions
+* Keyword matching
+* Rule-based extraction
+
+The API can indicate when processing is operating in offline mode.
+
+This makes the application easier to demonstrate locally and provides a basic resilience mechanism when external LLM services are unavailable.
+
+---
+
+## Database Configuration
+
+SQLite can be used for zero-configuration local development.
+
+The database can be changed through the `DATABASE_URL` environment variable.
+
+Example configuration:
+
+`DATABASE_URL=sqlite:///./complaints.db`
+
+For PostgreSQL or MySQL deployments, the corresponding SQLAlchemy database URL can be configured through the environment.
+
+---
+
+## Installation
+
+### Backend
+
+```
+cd backend
+
+python -m venv venv
+```
+
+Activate the virtual environment on Windows:
+
+```
+venv\Scripts\activate
+```
+
+Install dependencies:
+
+```
+pip install -r requirements.txt
+```
+
+Create the environment file:
+
+```
+copy .env.example .env
+```
+
+Add the required Groq API key to `.env`.
+
+Start the backend:
+
+```
+uvicorn app.main:app --reload --port 8000
+```
+
+---
+
+### Frontend
+
+Open another terminal:
+
+```
+cd frontend
+```
+
+Install dependencies:
+
+```
+npm install
+```
+
+Start the frontend:
+
+```
+npm start
+```
+
+Open:
+
+`http://localhost:3000`
+
+---
+
+## Environment Variables
+
+Create a `.env` file in the backend directory.
+
+Example:
+
+```
+GROQ_API_KEY=your_api_key_here
+DATABASE_URL=sqlite:///./complaints.db
+```
+
+Never commit the actual `.env` file or API keys to GitHub.
+
+Use `.env.example` to document required environment variables without exposing secrets.
+
+---
+
+## Example Workflow
+
+### Example 1 — Complete Complaint
+
+Input:
+
+> Customer service received a call from a hospital pharmacist reporting a severe allergic reaction after administering Amoxicillin 500mg Tablets, batch AMX-7734, manufactured 2025-05-10, expiry 2027-05-10. Approximately 40 tablets from the batch are affected.
+
+The system can extract:
+
+* Customer/source information
+* Product
+* Strength
+* Batch
+* Manufacturing date
+* Expiry date
+* Quantity affected
+* Complaint description
+
+The complaint can then proceed through completeness checking and the downstream AI assessment workflow.
+
+---
+
+### Example 2 — Incomplete Complaint
+
+Input:
+
+> We received an email about some tablets looking discolored.
+
+The system can identify missing information and generate a clarification request rather than inventing unknown complaint details.
+
+---
+
+### Example 3 — AI Complaint Editing
+
+Existing complaint:
+
+> Priority: Low
+
+User instruction:
+
+> Change the priority to High.
+
+The AI Edit workflow updates the requested field while preserving the other complaint information.
+
+---
+
+## Error Handling and Resilience
+
+The system is designed to handle common failure conditions including:
+
+* Invalid document formats
+* Corrupt documents
+* Password-protected PDFs
+* Missing API credentials
+* Missing complaint information
+* LLM response parsing failures
+* Unsupported uploads
+* Empty documents
+* OCR-related failures
+
+The objective is to provide useful feedback instead of allowing individual failures to crash the entire application.
+
+---
+
+## Security Considerations
+
+This project is designed as a development/demo application and is **not intended to be used directly with real patient, customer, or regulated pharmaceutical data without additional security controls**.
+
+Important production considerations would include:
+
+* Authentication and authorization
+* Role-based access control
+* Encryption
+* Audit logging
+* Secrets management
+* Data retention policies
+* PII protection
+* PHI handling where applicable
+* Regulatory compliance
+* Model-output validation
+* Human approval workflows
+* Secure document storage
+* Database access controls
+
+API keys and credentials should always be stored in environment variables or a dedicated secrets-management system.
+
+---
+
+## Limitations
+
+* AI-generated risk classifications are preliminary recommendations.
+* Root-cause suggestions do not represent confirmed investigation findings.
+* CAPA recommendations require qualified human review.
+* Duplicate detection is an AI-assisted screening mechanism.
+* OCR quality depends on document quality and the installed OCR engine.
+* LLM outputs can contain errors or incomplete information.
+* Production deployment would require stronger security, authentication, auditability, validation, monitoring, and regulatory controls.
+
+---
+
+## Future Improvements
+
+Potential future extensions include:
+
+* Role-based authentication
+* QA approval workflow
+* Pharmacovigilance integration
+* Advanced semantic duplicate detection
+* Vector database for historical complaint retrieval
+* Retrieval-Augmented Generation (RAG)
+* Complaint trend analytics
+* Batch-level complaint clustering
+* Automated escalation workflows
+* Advanced OCR/document vision models
+* Human-in-the-loop approval
+* Full audit trail
+* Model evaluation framework
+* LLM observability and tracing
+* Production PostgreSQL deployment
+* Docker-based deployment
+* CI/CD pipeline
+* Automated testing
+* Model and prompt versioning
+* Monitoring and alerting
+
+---
+## Project Status
+
+**Status: Functional AI application / portfolio project**
+
+The current implementation focuses on demonstrating an end-to-end AI-powered complaint-management workflow, including frontend interaction, backend APIs, LangGraph orchestration, LLM processing, document extraction, database integration, and AI-generated QA assistance.
+
+It should not be considered a validated pharmaceutical QMS or production regulatory system.
+
+---
+
+## License
+
+This project is intended for educational, portfolio, and demonstration purposes.
